@@ -1,0 +1,80 @@
+# Import Libraries
+import yfinance as yf
+import numpy as np
+import pandas as pd
+import requests
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+import xgboost as xgb
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+import warnings
+warnings.filterwarnings("ignore")
+
+# Fetch Stock Data (Tesla Example)
+ticker = "TSLA"
+stock_data = yf.download(ticker, start="2015-01-01", end="2024-01-01")
+df_stock = stock_data[["Close"]].reset_index()
+
+# Fetch Real R&D Spending from SEC Filings (EDGAR API)
+cik = "0001318605"  # Tesla's SEC CIK Number
+url = f"https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/ResearchAndDevelopmentExpense.json"
+headers = {"User-Agent": "YourEmail@example.com"}  # Replace with your email
+response = requests.get(url, headers=headers)
+data = response.json()
+rd_expenses = [(item["end"], item["val"]) for item in data["units"]["USD"]]
+df_rd = pd.DataFrame(rd_expenses, columns=["Date", "R&D_Spending"])
+df_rd["Date"] = pd.to_datetime(df_rd["Date"])
+
+# Merge Stock Prices with Real R&D Data
+df = pd.merge(df_stock, df_rd, on="Date", how="left").fillna(method="ffill")
+df.dropna(inplace=True)
+
+# Normalize Data
+scaler = MinMaxScaler()
+df_scaled = scaler.fit_transform(df[["Close", "R&D_Spending"]])
+
+# Create Time-Series Sequences (60 Days Lookback)
+X, y = [], []
+for i in range(60, len(df_scaled)):
+    X.append(df_scaled[i-60:i, :])  # Features: Stock & R&D Spending
+    y.append(df_scaled[i, 0])  # Predict Stock Price
+X, y = np.array(X), np.array(y)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+# Train Machine Learning Models
+lr = LinearRegression().fit(X_train.reshape(X_train.shape[0], -1), y_train)
+rf = RandomForestRegressor(n_estimators=100, random_state=42).fit(X_train.reshape(X_train.shape[0], -1), y_train)
+xgb_model = xgb.XGBRegressor(objective="reg:squarederror", n_estimators=100).fit(X_train.reshape(X_train.shape[0], -1), y_train)
+
+# Train LSTM Deep Learning Model
+model_lstm = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2])),
+    Dropout(0.2),
+    LSTM(50, return_sequences=False),
+    Dropout(0.2),
+    Dense(25), Dense(1)
+])
+model_lstm.compile(optimizer='adam', loss='mean_squared_error')
+model_lstm.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
+
+# Predictions
+y_pred_lr = lr.predict(X_test.reshape(X_test.shape[0], -1))
+y_pred_rf = rf.predict(X_test.reshape(X_test.shape[0], -1))
+y_pred_xgb = xgb_model.predict(X_test.reshape(X_test.shape[0], -1))
+y_pred_lstm = model_lstm.predict(X_test)
+
+# Plot Results
+plt.figure(figsize=(14, 6))
+plt.plot(y_test, label="Actual Prices", color='black')
+plt.plot(y_pred_lr, label="Linear Regression", linestyle="dashed", color='blue')
+plt.plot(y_pred_rf, label="Random Forest", linestyle="dashed", color='green')
+plt.plot(y_pred_xgb, label="XGBoost", linestyle="dashed", color='orange')
+plt.plot(y_pred_lstm, label="LSTM (Deep Learning)", linestyle="dashed", color='red')
+plt.title("Stock Price Prediction: ML vs. Deep Learning (Using Real R&D Data)")
+plt.xlabel("Time"), plt.ylabel("Stock Price (Normalized)"), plt.legend()
+plt.show()
+               

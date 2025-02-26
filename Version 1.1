@@ -1,0 +1,79 @@
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Function to get R&D spending data (Placeholder: Replace with real API or dataset)
+def get_rd_spending():
+    return {
+        'USA': 800,  # in billion USD
+        'China': 550,
+        'Germany': 180,
+        'Japan': 170,
+        'South Korea': 120
+    }
+
+# Function to get currency exchange rate (Example: USD/CNY for China)
+def get_exchange_rate(currency_pair):
+    url = f"https://api.exchangerate.host/latest?base={currency_pair[:3]}&symbols={currency_pair[4:]}"
+    response = requests.get(url).json()
+    return response['rates'][currency_pair[4:]] if 'rates' in response else None
+
+# Function to get stock price (Example: Amazon)
+def get_stock_price(ticker):
+    url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey=demo"  # Replace with real API key
+    response = requests.get(url).json()
+    return response[0]['price'] if response else None
+
+# Function to get multiple currency exchange rates for comparison
+def get_multiple_exchange_rates(base_currency, compare_currencies):
+    url = f"https://api.exchangerate.host/latest?base={base_currency}&symbols={','.join(compare_currencies)}"
+    response = requests.get(url).json()
+    return response['rates'] if 'rates' in response else None
+
+# Function to normalize data for comparison
+def normalize_data(data):
+    max_value = max(data.values())
+    return {k: v / max_value for k, v in data.items()}
+
+# User input for country and company
+target_country = 'China'
+currency_pair = 'USD/CNY'  # Adjust based on country selection
+target_company = 'AMZN'  # Amazon as an example
+compare_currencies = ['EUR', 'GBP', 'JPY', 'AUD', 'CAD']  # Additional currency comparisons
+
+# Fetch data
+rd_spending = get_rd_spending()
+exchange_rate = get_exchange_rate(currency_pair)
+stock_price = get_stock_price(target_company)
+normalized_rd_spending = normalize_data(rd_spending)
+currency_comparison = get_multiple_exchange_rates(currency_pair[:3], compare_currencies)
+
+# Convert data to DataFrame
+df = pd.DataFrame(list(normalized_rd_spending.items()), columns=['Country', 'Normalized R&D Spending'])
+currency_df = pd.DataFrame(list(currency_comparison.items()), columns=['Currency', 'Exchange Rate'])
+
+# Plot data
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+
+# R&D Spending Bar Chart
+ax1.bar(df['Country'], df['Normalized R&D Spending'], color='b', alpha=0.6, label='Normalized R&D Spending')
+ax1.set_ylabel("Normalized R&D Spending", color='b')
+ax1.tick_params(axis='y', labelcolor='b')
+ax1.set_title("R&D Spending by Country")
+ax1.legend()
+
+# Currency Exchange Rate Bar Chart
+ax2.bar(currency_df['Currency'], currency_df['Exchange Rate'], color='g', alpha=0.6, label='Exchange Rate vs. USD')
+ax2.set_ylabel("Exchange Rate", color='g')
+ax2.tick_params(axis='y', labelcolor='g')
+ax2.set_title(f"{currency_pair[:3]} Exchange Rate Comparison")
+ax2.legend()
+
+plt.tight_layout()
+plt.show()
+
+# Display currency exchange rate and stock price
+print(f"Exchange Rate ({currency_pair}): {exchange_rate}")
+print(f"{target_company} Stock Price: ${stock_price}")
+print("Currency Exchange Rate Comparison:")
+print(currency_df)
